@@ -91,6 +91,23 @@ def receive_req_from_client(connection, name, id):
                 else:
                     msg = target+" not online\n"
                     pms[name].append(msg)
+            elif decoded_data == "download_file":
+                print("downloading file process")
+                data = connection.recv(2048)
+                decoded_data = data.decode('utf-8')
+                print(decoded_data)
+                files = [f for f in listdir("files") if isfile(join("files", f))]
+                if decoded_data[1:] not in files:
+                    msg = decoded_data[1:]+" not available\n"
+                    #pms[name].append(msg)
+                    connection.sendall(str.encode(msg))
+                else:
+                    msg = "establishing frUDP connection\n"
+                    #pms[name].append(msg)
+                    connection.sendall(str.encode(msg))
+                    #################
+                    ### UDP magic ###
+                    #################
             elif decoded_data == "set_msg_all":
                 print("msg sending", decoded_data)
                 data = connection.recv(2048)
@@ -121,13 +138,13 @@ def send_msg_to_client(connection, name, id):
     while id in clients.keys():
         if len(msgs)!=len(prevmsgs):
             for i in msgs:
-                if i not in prevmsgs:
+                if i not in prevmsgs:        # cause bugs if msg already was sent in the past
                     connection.sendall(str.encode(i))
             prevmsgs = msgs.copy()
         if pms.get(name) is not None:
             if len(pms.get(name))!=len(prevpms):
                 for i in pms.get(name):
-                    if i not in prevpms:
+                    if i not in prevpms:      # cause bugs if msg already was sent in the past
                         connection.sendall(str.encode(i))
                 prevpms = pms.get(name).copy()
 

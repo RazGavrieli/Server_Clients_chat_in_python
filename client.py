@@ -52,8 +52,12 @@ def send(clientSocket, msg, text, chat):
         if msg[0:3] == "!pm" or msg[0:3] == "!PM" or msg[0:3] == "!Pm" or msg[0:3] == "!pM":
             clientSocket.send(str.encode("set_msg"))
             msg = msg[3:]
+        elif msg[0:3] == "!df" or msg[0:3] == "!DF" or msg[0:3] == "!Df" or msg[0:3] == "!dF":
+            clientSocket.send(str.encode("download_file"))
+            msg = msg[3:]
         else:
             clientSocket.send(str.encode("set_msg_all"))
+
     elif msg == "nickname":
         msg = text.get("1.0", "end - 1 chars")
         if msg == "" or msg == " " or msg == "   ":
