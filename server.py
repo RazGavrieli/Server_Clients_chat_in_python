@@ -1,20 +1,142 @@
+import _thread
 import threading
 from socket import *
 from _thread import *
 from os import listdir
 from os.path import isfile, join
+import os
+import hashlib
 
 serverSocket = socket(AF_INET, SOCK_STREAM)
-addr = ("127.0.0.1", 55000)
-msgs = [] # [list of msgs]
-pms = {} # name, [list of msgs]
-clients = {} # id, its name (online clients only)
+host = "127.0.0.1"
+port = 55000
+msgs = []       # [list of msgs]
+pms = {}           # name, [list of msgs]
+clients = {}        # id, its name (online clients only)
 try:
-    serverSocket.bind(addr)
+    serverSocket.bind((host, port))
 except:
     print("error")
 print('Socket is listening..')
 serverSocket.listen(5)
+
+def md5_checksum(data):
+    md5h = hashlib.md5()
+    md5h.update(data)
+    return md5h.hexdigest()
+
+def unrwrap(data):
+    if data[:32].decode('utf-8')!=md5_checksum(data[32:]):
+        return 1, data[32:]
+    data = data.decode('utf-8')
+    return data[:32], data[32:35], data[35:]
+
+def wrap(data, id):
+    if id > 999:
+        print("error segment id too big")
+        exit_thread()
+    elif 9 >= id >= 0:
+        id = "00" + str(id)
+    elif 99 >= id >=10:
+        id = "0"+str(id)
+    else:
+        id = str(id)
+    if type(data)!=str:
+        data = data.decode()
+
+    data = id + data
+    checksum = md5_checksum(data.encode('utf-8'))
+    data = checksum+data
+    return data.encode('utf-8')
+
+def threewayhandshake(udpSocket, connection, file):
+    # receive SYN from client
+    data, addr = udpSocket.recvfrom(1024)
+    # unrwrap the data transfered over UDP, first 32 bytes are checksum
+    checksum, id, data = unrwrap(data)
+    if data != "SYN" or checksum == 1:
+        connection.sendall(str.encode(str("error")))
+        exit_thread()
+
+    data = "SYN-ACK" + str(os.path.getsize("files/" + file))
+    udpSocket.sendto(wrap(data, 0), addr)
+
+    data, addr = udpSocket.recvfrom(1024)
+    checksum, id, data = unrwrap(data)
+    if data != "ACK" or checksum == 1:
+        connection.sendall(str.encode(str("error")))
+        exit_thread()
+
+    return addr
+
+def frUDP(connection, name, id, file):
+    connection.sendall(str.encode("connect_frudp"))
+    udpSocket = socket(AF_INET, SOCK_DGRAM)
+    ready = False
+    udport = 55001
+    while not ready:
+        try:
+            udpSocket.bind((host, udport))
+            ready = True
+        except:
+            print("could not udp at "+str(udport))
+            udport+=1
+            if udport>55015:
+                break
+    if not ready:
+        connection.sendall(str.encode("e"))
+        exit_thread()
+    else:
+        # send over TCP the dedicated port for file transfer
+        connection.sendall(str.encode(str(udport)+file))
+
+    print("socket ready at port "+str(udport))
+    addr = threewayhandshake(udpSocket, connection, file)
+
+    done = False
+    segments = []
+    nacks = []
+
+    # save file to memory
+    f = open("files/"+file, "rb")
+    b=0
+    filesize = os.path.getsize("files/" + file)
+    while b<filesize+1000:
+        segments.append(f.read(1000))
+        b+=1000
+
+    segments.append(f.read(1000))
+    print("amount ", len(segments))
+    # transfer file algorithm
+    id = 0
+    while not done:
+        if id>=len(segments) and len(nacks)==0:
+            break
+        elif id>=len(segments):
+            id = int(nacks[0])
+        data = segments[id]
+        print(data)
+        udpSocket.sendto(wrap(data, id), addr)
+        id += 1
+
+        data, addr = udpSocket.recvfrom(65535)
+        checksum, _, data = unrwrap(data)
+        if checksum==1:
+            print("what to do when checksum is wrong for ack msg")
+            exit_thread()
+        if data=="ACK-ALL":
+            done = True
+        if data[:4]=="NACK":
+            nacks.append(data[4:6])
+        if data[:3]=="ACK":
+            if data[3:5] in nacks:
+                nacks.remove(data[3:5])
+
+
+
+    print("done transferring")
+    connection.sendall(str.encode("file transfer complete\n"))
+
 
 def newconnection(connection, id):
     data = connection.recv(2048)
@@ -95,19 +217,17 @@ def receive_req_from_client(connection, name, id):
                 print("downloading file process")
                 data = connection.recv(2048)
                 decoded_data = data.decode('utf-8')
-                print(decoded_data)
                 files = [f for f in listdir("files") if isfile(join("files", f))]
                 if decoded_data[1:] not in files:
                     msg = decoded_data[1:]+" not available\n"
                     #pms[name].append(msg)
                     connection.sendall(str.encode(msg))
                 else:
-                    msg = "establishing frUDP connection\n"
+                    msg = "establishing frUDP connection..\n"
                     #pms[name].append(msg)
                     connection.sendall(str.encode(msg))
-                    #################
-                    ### UDP magic ###
-                    #################
+                    start_new_thread(frUDP, (connection, name, id, decoded_data[1:]))
+
             elif decoded_data == "set_msg_all":
                 print("msg sending", decoded_data)
                 data = connection.recv(2048)

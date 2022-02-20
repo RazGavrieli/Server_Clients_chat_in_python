@@ -41,3 +41,12 @@ at the top of the code there is a popup message that asks for an IP, it is a bit
 after getting the IP from the user, it connects to the server. At the end of the code there are lines for the GUI which also works the inputs from the user. <br>
 for listening to the server there is a new thread that runs in the background and adds things to the text box. 
 <br> the send function is more complicated because it needs to differ between commands to the server and actual content the user wants to send. 
+
+#### frUDP initial construction idea:
+after the client sent a download request: 
+the client opens a UDP socket and send SYN to server <br>
+the server binds to a UDP socket and recv SYN and sends ACK <br>
+the client receives ACK and sends ACK <br>
+ **once the three-way handshake happend** 
+<br> the server prepares the file for transfer: send size, bytes, amount of segments. 
+each segme nt will be numbers and the client will ask for numbers that it didn't receive (select n repeat)
