@@ -1,11 +1,12 @@
-import _thread
-import threading
+import struct
+import time
 from socket import *
 from _thread import *
 from os import listdir
 from os.path import isfile, join
 import os
 import hashlib
+import pickle
 
 serverSocket = socket(AF_INET, SOCK_STREAM)
 host = "127.0.0.1"
@@ -21,9 +22,14 @@ print('Socket is listening..')
 serverSocket.listen(5)
 
 def md5_checksum(data):
-    md5h = hashlib.md5()
-    md5h.update(data)
-    return md5h.hexdigest()
+    if isinstance(data, (bytes, bytearray)):
+        return hashlib.md5(data).hexdigest()
+
+    elif isinstance(data, str):
+        return hashlib.md5(data.encode()).hexdigest()
+
+    else:
+        raise ValueError('invalid input. input must be string or bytes')
 
 def unrwrap(data):
     if data[:32].decode('utf-8')!=md5_checksum(data[32:]):
@@ -69,11 +75,55 @@ def threewayhandshake(udpSocket, connection, file):
 
     return addr
 
-def frUDP(connection, name, id, file):
+def wrap_payload(data):
+    # data is a dictionary where key is id and value is bytes of file
+    msg = bytes()
+    for i in data.values():
+        msg += i
+    checksum = md5_checksum(msg)
+    msg = pickle.dumps(data)
+    msg = bytes(checksum, 'utf-8')+msg
+    return msg
+
+
+def listen_for_acks(values, nacks, udpSocket):
+    while len(nacks) != 0 or not values[0]:
+        if not values[0]:
+            try:
+                data, addr = udpSocket.recvfrom(65535)
+            except:
+                break
+        checksum, _, data = unrwrap(data)
+        if checksum == 1:
+            print("what to do when ack msg gets wrong checksum?")
+        if data[:4] == "NACK":
+            if values[1]>8:
+                values[1]-=5
+            if int(data[4:7]) not in nacks:
+                nacks.append(int(data[4:7]))
+        if data == "ACK-ALL":
+            values[0] = True
+        elif data[:3] == "ACK":
+            list = eval(data[3:])
+            if values[1]<50:
+                values[1]+=10
+            elif values[1]<55:
+                values[1]+=5
+            elif values[1]<60:
+                values[1]+=3
+            for i in list:
+                if i in nacks:
+                    if nacks.index(i) > 2 and values[1]>8:
+                        values[1]-=2
+                    nacks.remove(i)
+    values[0] = True
+
+
+def frUDP(connection, file):
     connection.sendall(str.encode("connect_frudp"))
     udpSocket = socket(AF_INET, SOCK_DGRAM)
-    ready = False
     udport = 55001
+    ready = False
     while not ready:
         try:
             udpSocket.bind((host, udport))
@@ -93,49 +143,39 @@ def frUDP(connection, name, id, file):
     print("socket ready at port "+str(udport))
     addr = threewayhandshake(udpSocket, connection, file)
 
-    done = False
     segments = []
     nacks = []
 
     # save file to memory
     f = open("files/"+file, "rb")
     b=0
+    id = 0
     filesize = os.path.getsize("files/" + file)
     while b<filesize+1000:
         segments.append(f.read(1000))
+        nacks.append(id)
+        id+=1
         b+=1000
 
     segments.append(f.read(1000))
-    print("amount ", len(segments))
-    # transfer file algorithm
-    id = 0
-    while not done:
-        if id>=len(segments) and len(nacks)==0:
-            break
-        elif id>=len(segments):
-            id = int(nacks[0])
-        data = segments[id]
-        print(data)
-        udpSocket.sendto(wrap(data, id), addr)
-        id += 1
+    nacks.append(id)
+    values = []
+    values.append(False)
+    values.append(60)
+    values[1] = 10   # "speed" as in the amount of segments sent every time
+    start_new_thread(listen_for_acks, (values, nacks, udpSocket))
+    while not values[0]:
 
-        data, addr = udpSocket.recvfrom(65535)
-        checksum, _, data = unrwrap(data)
-        if checksum==1:
-            print("what to do when checksum is wrong for ack msg")
-            exit_thread()
-        if data=="ACK-ALL":
-            done = True
-        if data[:4]=="NACK":
-            nacks.append(data[4:6])
-        if data[:3]=="ACK":
-            if data[3:5] in nacks:
-                nacks.remove(data[3:5])
+        data = {}
 
+        for id in range(len(segments)):
+            if id in nacks and len(data)<=values[1]:
+                data[str(id)] = segments[id]
 
-
-    print("done transferring")
-    connection.sendall(str.encode("file transfer complete\n"))
+        msg = wrap_payload(data)
+        print(len(msg))
+        udpSocket.sendto(msg, addr)
+    connection.sendall(str.encode("download complete\n"))
 
 
 def newconnection(connection, id):
@@ -226,7 +266,7 @@ def receive_req_from_client(connection, name, id):
                     msg = "establishing frUDP connection..\n"
                     #pms[name].append(msg)
                     connection.sendall(str.encode(msg))
-                    start_new_thread(frUDP, (connection, name, id, decoded_data[1:]))
+                    start_new_thread(frUDP, (connection, decoded_data[1:]))
 
             elif decoded_data == "set_msg_all":
                 print("msg sending", decoded_data)

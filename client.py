@@ -1,4 +1,5 @@
-import threading
+import random
+import time
 from socket import *
 from _thread import *
 from tkinter import *
@@ -6,6 +7,7 @@ from functools import partial
 import hashlib
 import math
 from pathlib import Path
+import pickle
 from tkinter.ttk import Progressbar
 
 clientSocket = socket(AF_INET, SOCK_STREAM)
@@ -41,9 +43,14 @@ print("connected")
 
 
 def md5_checksum(data):
-    md5h = hashlib.md5()
-    md5h.update(data)
-    return md5h.hexdigest()
+    if isinstance(data, (bytes, bytearray)):
+        return hashlib.md5(data).hexdigest()
+
+    elif isinstance(data, str):
+        return hashlib.md5(data.encode()).hexdigest()
+
+    else:
+        raise ValueError('invalid input. input must be string or bytes')
 
 def unrwrap(data):
     if data[:32].decode('utf-8')!=md5_checksum(data[32:]):
@@ -72,6 +79,8 @@ def wrap(data, id):
 def threewayhandshake(udpSocket, addr):
     data = "SYN"
     udpSocket.sendto(wrap(data, 0), addr)
+    print(addr)
+    time.sleep(1)
 
     data, addr = udpSocket.recvfrom(1024)
     checksum, id, data = unrwrap(data)
@@ -84,53 +93,79 @@ def threewayhandshake(udpSocket, addr):
     udpSocket.sendto(wrap(data, 0), addr)
     return filesize
 
+def unwrap_payload(payload):
+    # get payload which is a list with the payload, IDs, and checksum
+    # returns the payload itself and IDs that it got,
+    checksum = payload[:32].decode('utf-8')
+    msg = pickle.loads(payload[32:])
+    data = bytes()
+    for i in msg.values():
+        data += i
+
+    if checksum!=md5_checksum(data):
+        checksum = 1
+    return checksum, msg
+
 
 def get_file(port, file):
-    udpSocket = socket(AF_INET, SOCK_DGRAM)
-    addr = ("127.0.0.1", int(port))
 
+    udpSocket = socket(AF_INET, SOCK_DGRAM)
+    addr = (host[0], int(port))
+    progress['value'] = 0
     filesize = threewayhandshake(udpSocket, addr)
     segments = []
-    b=0
-    while b<int(filesize)+1000:
+    b = 0
+    while b < int(filesize) + 1000:
         segments.append("")
-        b+=1000
+        b += 1000
     segments.append("")
     amount_of_segments = len(segments)
     print("amount ", amount_of_segments)
 
     flag = True
-    acks = 0
-    while acks!=amount_of_segments-1:
+    packet_loss = False
+    acks = []
+
+    while len(acks) <= amount_of_segments - 1:
         data, addr = udpSocket.recvfrom(65535)
-        checksum, id, downloadedData = unrwrap(data)
-        if checksum==1:
-            data = "NACK"+id
+        checksum, downloadedData = unwrap_payload(data)
+        if random.randint(0,100)>7:  # delete for final version
+            packet_loss = True       # delete for final version
+        if checksum == 1 or packet_loss:    # delete "or packet loss" for final version
+            packet_loss = False      # delete for final version
+            print(" check sum is 1")
+            if random.randint(0,10)==9: # delete for final version
+                for i in downloadedData.keys():
+                    data = "NACK" + i
+                    udpSocket.sendto(wrap(data, 00), addr)
         else:
-            if segments[int(id)] == "":
-                acks+=1
-                if acks>=amount_of_segments/2 and flag:
-                    flag = False
-                    downloadwin = Tk()
-                    downloadwin.geometry("200x100")
-                    Label(downloadwin, text="downloaded 50%").pack(pady=20)
-                    Button(downloadwin, text="proceed", command=downloadwin.destroy).pack()
-                    downloadwin.mainloop()
-            data = "ACK"+id
-            segments[int(id)] = downloadedData
+            for i in downloadedData.keys():
+                if segments[int(i)] == "":
+                    acks.append(int(i))
+                    progress['value'] = (len(acks)/amount_of_segments)*100
 
-        udpSocket.sendto(wrap(data,00), addr)
-
-
-
-
+                    if len(acks) >= amount_of_segments / 2 and flag:
+                        flag = False
+                        downloadwin = Tk()
+                        downloadwin.geometry("200x100")
+                        Label(downloadwin, text="downloaded 50%\ncontinue?").pack(pady=20)
+                        Button(downloadwin, text="proceed", command=downloadwin.destroy).pack()
+                        downloadwin.mainloop()
+                segments[int(i)] = downloadedData.get(i)
+                data = "ACK" + str(acks)
+                udpSocket.sendto(wrap(data, 00), addr)
 
     data = "ACK-ALL"
     udpSocket.sendto(wrap(data, 00), addr)
+
     downloads_path = str(Path.home() / "Downloads")
-    f = open(downloads_path+"/"+file,"wb+")
+    f = open(downloads_path + "/" + file, "wb+")
     for i in segments:
-        f.write(i.encode('utf-8'))
+        if type(i) is bytes:
+            f.write(i)
+        elif type(i) is str:
+            f.write(i.encode('utf-8'))
+
 
 def listen(clientSocket, chat):
     connected = True
@@ -193,7 +228,7 @@ root = Tk()
 root.geometry("500x300")
 frame = Frame(root)
 frame.pack()
-chat = Text(frame, undo = True, height = 10, width = 70)
+chat = Text(frame, undo = True, height = 10, width = 60)
 start_new_thread(listen, (clientSocket, chat))
 leftframe = Frame(root)
 leftframe.pack(side=LEFT)
@@ -204,7 +239,7 @@ rightframe.pack(side=RIGHT)
 bottomframe = Frame(root)
 bottomframe.pack(side=BOTTOM)
 
-label = Label(frame, text="chat ver 0.3")
+label = Label(frame, text="chat ver 0.4")
 label.pack()
 
 label = Label(frame, text="message: ")
@@ -215,15 +250,20 @@ text.pack(expand=True, fill=BOTH)
 
 chat.pack(fill=BOTH)
 chat.insert("1.0", "enter your nickname first\n"
-                   "for Private Messages use !pm NAME MSG\n")
+                   "for Private Messages use !pm NAME MSG\n"
+                   "for Downloading Files use !df NAME_OF_FILE\n"
+                   "")
 chat.config(state=DISABLED)
 
+progress = Progressbar(frame,orient = HORIZONTAL,length = 100, mode = 'determinate')
+progress.pack(padx=1, pady=0)
+
 button0 = Button(leftframe, state=DISABLED, text="available files", command=partial(send, clientSocket, "get_files", text, chat))
-button0.pack(padx=3, pady=3)
+button0.pack(padx=3, pady=1)
 button1 = Button(leftframe, state=DISABLED, text="online users", command=partial(send, clientSocket, "get_users", text, chat))
-button1.pack(padx=3, pady=3)
+button1.pack(padx=0, pady=1)
 button2 = Button(frame, text="enter nickname", command=partial(send, clientSocket, "nickname", text, chat))
-button2.pack(padx=3, pady=3)
+button2.pack(padx=3, pady=0)
 button3 = Button(rightframe, state=DISABLED, text="send", command=partial(send, clientSocket, None, text, chat))
 button3.pack(padx=3, pady=3)
 
