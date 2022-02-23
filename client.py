@@ -65,7 +65,7 @@ def get_file(port, file):
     while len(acks) <= amount_of_segments - 1:
         data, addr = udpSocket.recvfrom(65535)
         checksum, downloadedData = unwrap_payload(data)
-        if random.randint(0,100)>7:  # delete for final version
+        if random.randint(0,100)>100:  # delete for final version
             packet_loss = True       # delete for final version
         if checksum == 1 or packet_loss:    # delete "or packet loss" for final version
             packet_loss = False      # delete for final version

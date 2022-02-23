@@ -5,7 +5,7 @@ from os.path import isfile, join
 from frUDP import *
 
 serverSocket = socket(AF_INET, SOCK_STREAM)
-host = "127.0.0.1"
+host = gethostbyname(gethostname())
 port = 55000
 msgs = []       # [list of msgs]
 pms = {}           # name, [list of msgs]
@@ -14,7 +14,7 @@ try:
     serverSocket.bind((host, port))
 except:
     print("error")
-print('Socket is listening..')
+print('Socket is listening at ', host)
 serverSocket.listen(5)
 
 
@@ -106,7 +106,7 @@ def frUDP(connection, file):
                 data[str(id)] = segments[id]
 
         msg = wrap_payload(data)
-        print(len(msg))
+        #print(len(msg))
         udpSocket.sendto(msg, addr)
     connection.sendall(str.encode("download complete\n"))
 
