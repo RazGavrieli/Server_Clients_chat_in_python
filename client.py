@@ -1,14 +1,10 @@
 import random
-import time
 from socket import *
-from _thread import *
 from tkinter import *
 from functools import partial
-import hashlib
-import math
 from pathlib import Path
-import pickle
 from tkinter.ttk import Progressbar
+from frUDP import *
 
 clientSocket = socket(AF_INET, SOCK_STREAM)
 ##############################################################################################################
@@ -38,73 +34,13 @@ try:
     clientSocket.connect((host[0], port))
 except:
     print("error in connecting")
+    win = Tk()
+    win.geometry("200x100")
+    Label(win, text="could not connect").pack(pady=20)
+    win.mainloop()
+    time.sleep(1)
     exit()
 print("connected")
-
-
-def md5_checksum(data):
-    if isinstance(data, (bytes, bytearray)):
-        return hashlib.md5(data).hexdigest()
-
-    elif isinstance(data, str):
-        return hashlib.md5(data.encode()).hexdigest()
-
-    else:
-        raise ValueError('invalid input. input must be string or bytes')
-
-def unrwrap(data):
-    if data[:32].decode('utf-8')!=md5_checksum(data[32:]):
-        return 1, data[32:]
-    data = data.decode('utf-8')
-    return data[:32], data[32:35], data[35:]
-
-def wrap(data, id):
-    if id > 999:
-        print("error segment id too big")
-        exit_thread()
-    elif 9 >= id >= 0:
-        id = "00" + str(id)
-    elif 99 >= id >=10:
-        id = "0"+str(id)
-    else:
-        id = str(id)
-    if type(data)!=str:
-        data = data.decode().strip()
-
-    data = id + data
-    checksum = md5_checksum(data.encode('utf-8'))
-    data = checksum+data
-    return data.encode('utf-8')
-
-def threewayhandshake(udpSocket, addr):
-    data = "SYN"
-    udpSocket.sendto(wrap(data, 0), addr)
-    print(addr)
-    time.sleep(1)
-
-    data, addr = udpSocket.recvfrom(1024)
-    checksum, id, data = unrwrap(data)
-    print(data, id)
-    if data[:7] != "SYN-ACK" or checksum == 1:
-        exit_thread()
-
-    filesize = data[7:]
-    data = "ACK"
-    udpSocket.sendto(wrap(data, 0), addr)
-    return filesize
-
-def unwrap_payload(payload):
-    # get payload which is a list with the payload, IDs, and checksum
-    # returns the payload itself and IDs that it got,
-    checksum = payload[:32].decode('utf-8')
-    msg = pickle.loads(payload[32:])
-    data = bytes()
-    for i in msg.values():
-        data += i
-
-    if checksum!=md5_checksum(data):
-        checksum = 1
-    return checksum, msg
 
 
 def get_file(port, file):
@@ -112,7 +48,7 @@ def get_file(port, file):
     udpSocket = socket(AF_INET, SOCK_DGRAM)
     addr = (host[0], int(port))
     progress['value'] = 0
-    filesize = threewayhandshake(udpSocket, addr)
+    filesize = clientside_threewayhandshake(udpSocket, addr)
     segments = []
     b = 0
     while b < int(filesize) + 1000:
@@ -239,7 +175,7 @@ rightframe.pack(side=RIGHT)
 bottomframe = Frame(root)
 bottomframe.pack(side=BOTTOM)
 
-label = Label(frame, text="chat ver 0.4")
+label = Label(frame, text="chat ver 0.42")
 label.pack()
 
 label = Label(frame, text="message: ")
@@ -265,7 +201,8 @@ button1.pack(padx=0, pady=1)
 button2 = Button(frame, text="enter nickname", command=partial(send, clientSocket, "nickname", text, chat))
 button2.pack(padx=3, pady=0)
 button3 = Button(rightframe, state=DISABLED, text="send", command=partial(send, clientSocket, None, text, chat))
-button3.pack(padx=3, pady=3)
+button3.pack(padx=3, pady=1)
+
 
 root.title("chat")
 root.mainloop()

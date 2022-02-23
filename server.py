@@ -1,14 +1,8 @@
-import struct
-import time
+
 from socket import *
-from _thread import *
 from os import listdir
 from os.path import isfile, join
-import os
-import hashlib
-import pickle
-
-import frUDP
+from frUDP import *
 
 serverSocket = socket(AF_INET, SOCK_STREAM)
 host = "127.0.0.1"
@@ -23,74 +17,6 @@ except:
 print('Socket is listening..')
 serverSocket.listen(5)
 
-def md5_checksum(data):
-    if isinstance(data, (bytes, bytearray)):
-        return hashlib.md5(data).hexdigest()
-
-    elif isinstance(data, str):
-        return hashlib.md5(data.encode()).hexdigest()
-
-    else:
-        raise ValueError('invalid input. input must be string or bytes')
-
-
-def unrwrap(data):
-    if data[:32].decode('utf-8')!=md5_checksum(data[32:]):
-        return 1, data[32:]
-    data = data.decode('utf-8')
-    return data[:32], data[32:35], data[35:]
-
-
-def wrap(data, id):
-    if id > 999:
-        print("error segment id too big")
-        exit_thread()
-    elif 9 >= id >= 0:
-        id = "00" + str(id)
-    elif 99 >= id >=10:
-        id = "0"+str(id)
-    else:
-        id = str(id)
-    if type(data)!=str:
-        data = data.decode()
-
-    data = id + data
-    checksum = md5_checksum(data.encode('utf-8'))
-    data = checksum+data
-    return data.encode('utf-8')
-
-
-def threewayhandshake(udpSocket, connection, file):
-    # receive SYN from client
-    data, addr = udpSocket.recvfrom(1024)
-    # unrwrap the data transfered over UDP, first 32 bytes are checksum
-    checksum, id, data = unrwrap(data)
-    if data != "SYN" or checksum == 1:
-        connection.sendall(str.encode(str("error")))
-        exit_thread()
-
-    data = "SYN-ACK" + str(os.path.getsize("files/" + file))
-    udpSocket.sendto(wrap(data, 0), addr)
-
-    data, addr = udpSocket.recvfrom(1024)
-    checksum, id, data = unrwrap(data)
-    if data != "ACK" or checksum == 1:
-        connection.sendall(str.encode(str("error")))
-        exit_thread()
-
-    return addr
-
-
-def wrap_payload(data):
-    # data is a dictionary where key is id and value is bytes of file
-    msg = bytes()
-    for i in data.values():
-        msg += i
-    checksum = md5_checksum(msg)
-    msg = pickle.dumps(data)
-    msg = bytes(checksum, 'utf-8')+msg
-    return msg
-
 
 def listen_for_acks(values, nacks, udpSocket):
     while len(nacks) != 0 or not values[0]:
@@ -99,7 +25,7 @@ def listen_for_acks(values, nacks, udpSocket):
                 data, addr = udpSocket.recvfrom(65535)
             except:
                 break
-        checksum, _, data = unrwrap(data)
+        checksum, _, data = unwrap(data)
         if checksum == 1:
             print("what to do when ack msg gets wrong checksum?")
         if data[:4] == "NACK":
@@ -148,7 +74,7 @@ def frUDP(connection, file):
         connection.sendall(str.encode(str(udport)+file))
 
     print("socket ready at port "+str(udport))
-    addr = threewayhandshake(udpSocket, connection, file)
+    addr = serverside_threewayhandshake(udpSocket, connection, file)
 
     segments = []
     nacks = []
@@ -295,7 +221,7 @@ def receive_req_from_client(connection, name, id):
     print(id, "disconnected \n")
     clients.pop(id)
     connection.close()
-    msg = name+" disconnected\n"
+    msg = name+"["+str(id)+"] disconnected\n"
     msgs.append(msg)
 
 
