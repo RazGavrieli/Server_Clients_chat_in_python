@@ -8,6 +8,8 @@ import os
 import hashlib
 import pickle
 
+import frUDP
+
 serverSocket = socket(AF_INET, SOCK_STREAM)
 host = "127.0.0.1"
 port = 55000
@@ -31,11 +33,13 @@ def md5_checksum(data):
     else:
         raise ValueError('invalid input. input must be string or bytes')
 
+
 def unrwrap(data):
     if data[:32].decode('utf-8')!=md5_checksum(data[32:]):
         return 1, data[32:]
     data = data.decode('utf-8')
     return data[:32], data[32:35], data[35:]
+
 
 def wrap(data, id):
     if id > 999:
@@ -54,6 +58,7 @@ def wrap(data, id):
     checksum = md5_checksum(data.encode('utf-8'))
     data = checksum+data
     return data.encode('utf-8')
+
 
 def threewayhandshake(udpSocket, connection, file):
     # receive SYN from client
@@ -74,6 +79,7 @@ def threewayhandshake(udpSocket, connection, file):
         exit_thread()
 
     return addr
+
 
 def wrap_payload(data):
     # data is a dictionary where key is id and value is bytes of file
@@ -97,24 +103,25 @@ def listen_for_acks(values, nacks, udpSocket):
         if checksum == 1:
             print("what to do when ack msg gets wrong checksum?")
         if data[:4] == "NACK":
-            if values[1]>8:
-                values[1]-=5
+            if values[1]>8:         # CC still WIP
+                values[1]-=5        # CC still WIP
             if int(data[4:7]) not in nacks:
                 nacks.append(int(data[4:7]))
         if data == "ACK-ALL":
             values[0] = True
         elif data[:3] == "ACK":
             list = eval(data[3:])
-            if values[1]<50:
-                values[1]+=10
-            elif values[1]<55:
-                values[1]+=5
-            elif values[1]<60:
-                values[1]+=3
+            if values[1]<50:        # CC still WIP
+                values[1]+=10       # CC still WIP
+            elif values[1]<55:      # CC still WIP
+                values[1]+=5        # CC still WIP
+            elif values[1]<60:      # CC still WIP
+                values[1]+=3        # CC still WIP
             for i in list:
                 if i in nacks:
-                    if nacks.index(i) > 2 and values[1]>8:
-                        values[1]-=2
+                    if nacks.index(i) > 2 and values[1]>8:  # CC still WIP
+                        # this checks for latency, where packet 2 arrived before packet 1
+                        values[1]-=2                        # CC still WIP
                     nacks.remove(i)
     values[0] = True
 
