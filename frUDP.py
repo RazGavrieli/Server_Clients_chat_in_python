@@ -44,7 +44,7 @@ def wrap(data, id):
     :return single object containing the data, it's id and checksum:
     """
     if id > 999:
-        print("error segment id too big")
+        print("error segment id too big, it means the file in the server is too big!")
         exit_thread()
     elif 9 >= id >= 0:
         id = "00" + str(id)
@@ -140,12 +140,10 @@ def clientside_threewayhandshake(udpSocket, addr):
     """
     data = "SYN"
     udpSocket.sendto(wrap(data, 0), addr)
-    print(addr)
     time.sleep(1)
 
     data, addr = udpSocket.recvfrom(1024)
     checksum, id, data = unwrap(data)
-    print(data, id)
     if data[:7] != "SYN-ACK" or checksum == 1:
         exit_thread()
 

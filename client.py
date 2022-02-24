@@ -36,14 +36,12 @@ print('Waiting for connection response')
 try:
     clientSocket.connect((host[0], port))
 except:
-    print("error in connecting")
     win = Tk()
     win.geometry("200x100")
     Label(win, text="could not connect").pack(pady=20)
     win.mainloop()
     time.sleep(1)
     exit()
-print("connected")
 
 
 def get_file(port, file):
@@ -74,11 +72,11 @@ def get_file(port, file):
     while len(acks) <= amount_of_segments - 1:
         data, addr = udpSocket.recvfrom(65535)
         checksum, downloadedData = unwrap_payload(data)
-        # if random.randint(0,100)>95:               \** packet loss simulation **\
-        #    packet_loss = True                     \** packet loss simulation **\
-        if checksum == 1 or packet_loss:  # "or packet_loss" is for packet loss simulation
-            # packet_loss = False                   \** packet loss simulation **\
-            # if random.randint(0,10)!=9:            \** packet loss simulation **\
+        #if random.randint(0,100)>89:               #\** packet loss simulation **\
+        #    packet_loss = True                     #\** packet loss simulation **\
+        if checksum == 1 or packet_loss:            # "or packet_loss" is for packet loss simulation
+        #    packet_loss = False                    #\** packet loss simulation **\
+        #    if random.randint(0,10)!=9:            #\** packet loss simulation **\
             for i in downloadedData.keys():
                 data = "NACK" + i
                 udpSocket.sendto(wrap(data, 00), addr)
@@ -126,7 +124,6 @@ def listen(clientSocket, chat):
             connected = False
         decoded_res = res.decode('utf-8')
         if decoded_res == "connect_frudp":
-            print("connect_frudp began")
             res = clientSocket.recv(1024)
             decoded_res = res.decode('utf-8')
             if decoded_res == "e":

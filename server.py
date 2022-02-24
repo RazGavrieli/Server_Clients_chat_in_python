@@ -1,10 +1,10 @@
-
 from socket import *
 from os import listdir
 from os.path import isfile, join
 from frUDP import *
 
 serverSocket = socket(AF_INET, SOCK_STREAM)
+
 host = gethostbyname(gethostname())
 port = 55000
 msgs = []       # [list of msgs]
@@ -19,6 +19,13 @@ serverSocket.listen(5)
 
 
 def listen_for_acks(values, nacks, udpSocket):
+    """
+    listens for ack\nack\ack-all messages sent by the client while the file transfers
+    :param values:
+    :param nacks:
+    :param udpSocket:
+    :return:
+    """
     while len(nacks) != 0 or not values[0]:
         if not values[0]:
             try:
@@ -53,6 +60,12 @@ def listen_for_acks(values, nacks, udpSocket):
 
 
 def frUDP(connection, file):
+    """
+    frUDP connection for controlled file transfer
+    :param connection:
+    :param file:
+    :return:
+    """
     connection.sendall(str.encode("connect_frudp"))
     udpSocket = socket(AF_INET, SOCK_DGRAM)
     udport = 55001
@@ -73,7 +86,6 @@ def frUDP(connection, file):
         # send over TCP the dedicated port for file transfer
         connection.sendall(str.encode(str(udport)+file))
 
-    print("socket ready at port "+str(udport))
     addr = serverside_threewayhandshake(udpSocket, connection, file)
 
     segments = []
@@ -106,6 +118,7 @@ def frUDP(connection, file):
                 data[str(id)] = segments[id]
 
         msg = wrap_payload(data)
+        #print(len(msg)) # this line is used for CC graphs
         udpSocket.sendto(msg, addr)
     connection.sendall(str.encode("download complete\n"))
 
@@ -182,36 +195,30 @@ def receive_req_from_client(connection, name, id):
         try:
             data = connection.recv(2048)
             if not data:
-                print("not data! from ", name, id)
+                print("problem at "+str(id)+", did he disconnect?")
                 connected = False
             decoded_data = data.decode('utf-8')
-            print("got ", decoded_data, " from ", name, id)
+            # print("got ", decoded_data, " from ", name, id)
             if decoded_data == "set_msg":
                 data = connection.recv(2048)
                 decoded_data = data.decode('utf-8')
                 splited_msg = decoded_data.split()
                 target = splited_msg[0]
                 decoded_data = decoded_data[len(target)+1:]
-                print("target is "+target)
                 msg = "|PM| " + name + "[" + str(id) + "]: " + decoded_data + "\n"
-                print("msg is "+msg)
 
                 if target in pms.keys():
                     pms[name].append(msg)
-                    print("entering ")
                     pms[target].append(msg)
                 elif target.isdecimal():
                     if int(target) in clients.keys():
                         pms[name].append(msg)
-                        print("transfuming")
                         targetemp = clients.get(int(target))
-                        print(targetemp)
                         pms[targetemp].append(msg)
                 else:
                     msg = target+" not online\n"
                     pms[name].append(msg)
             elif decoded_data == "download_file":
-                print("downloading file process")
                 data = connection.recv(2048)
                 decoded_data = data.decode('utf-8')
                 files = [f for f in listdir("files") if isfile(join("files", f))]
@@ -226,10 +233,8 @@ def receive_req_from_client(connection, name, id):
                     start_new_thread(frUDP, (connection, decoded_data[1:]))
 
             elif decoded_data == "set_msg_all":
-                print("msg sending", decoded_data)
                 data = connection.recv(2048)
                 msg = name + "["+str(id)+"]: " + data.decode('utf-8')+"\n"
-                print("size is ", len(str.encode(msg)))
                 msgs.append(msg)
             elif decoded_data == "disconnect":
                 connected = False
@@ -238,9 +243,9 @@ def receive_req_from_client(connection, name, id):
             elif decoded_data == "get_files":
                 get_files(connection)
             else:
-                print("error got weird command:"+ decoded_data)
+                print("error got weird command: "+ decoded_data)
         except:
-            print("problem occured")
+            print("problem at user "+str(id)+", did he disconnect?")
             break
     print(id, "disconnected \n")
     clients.pop(id)
@@ -263,13 +268,13 @@ def send_msg_to_client(connection, name, id):
     while id in clients.keys():
         if len(msgs)!=len(prevmsgs):
             for i in msgs:
-                if i not in prevmsgs:        # cause bugs if msg already was sent in the past
+                if i not in prevmsgs:
                     connection.sendall(str.encode(i))
             prevmsgs = msgs.copy()
         if pms.get(name) is not None:
             if len(pms.get(name))!=len(prevpms):
                 for i in pms.get(name):
-                    if i not in prevpms:      # cause bugs if msg already was sent in the past
+                    if i not in prevpms:
                         connection.sendall(str.encode(i))
                 prevpms = pms.get(name).copy()
 
@@ -278,8 +283,11 @@ def send_msg_to_client(connection, name, id):
 Always listen to new connection, once a new client has connected create 2 new threads for it.
 """
 id = 0
-while True:
+running = True
+while running:
     Client, address = serverSocket.accept()
     print('Connected to: ' + address[0] + ':' + str(address[1]))
     id += 1
     start_new_thread(newconnection, (Client, id))
+
+serverSocket.close()
