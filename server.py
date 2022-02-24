@@ -29,25 +29,25 @@ def listen_for_acks(values, nacks, udpSocket):
         if checksum == 1:
             print("what to do when ack msg gets wrong checksum?")
         if data[:4] == "NACK":
-            if values[1]>8:         # CC still WIP
-                values[1]-=5        # CC still WIP
+            print("got nack ")
+            if values[1]>8:
+                values[1]-=3        # CC values are imprecise
             if int(data[4:7]) not in nacks:
                 nacks.append(int(data[4:7]))
         if data == "ACK-ALL":
             values[0] = True
         elif data[:3] == "ACK":
             list = eval(data[3:])
-            if values[1]<50:        # CC still WIP
-                values[1]+=10       # CC still WIP
-            elif values[1]<55:      # CC still WIP
-                values[1]+=5        # CC still WIP
-            elif values[1]<60:      # CC still WIP
-                values[1]+=3        # CC still WIP
+            if values[1]<60:        # CC values are imprecise
+                values[1]+=1        # CC values are imprecise
+            flag = True
             for i in list:
                 if i in nacks:
-                    if nacks.index(i) > 2 and values[1]>8:  # CC still WIP
-                        # this checks for latency, where packet 2 arrived before packet 1
-                        values[1]-=2                        # CC still WIP
+                    if nacks.index(i) > 2 and values[1]>8:  # CC values are imprecise
+                        # this checks for latency, where a later packet arrived before it's predecessor
+                        if flag:
+                            flag = False
+                        values[1]-=1.2      # CC values are imprecise
                     nacks.remove(i)
     values[0] = True
 
@@ -95,23 +95,30 @@ def frUDP(connection, file):
     values = []
     values.append(False)
     values.append(60)
-    values[1] = 10   # "speed" as in the amount of segments sent every time
+    values[1] = 10   # the amount of segments sent every time
+
+    # start sending the file
     start_new_thread(listen_for_acks, (values, nacks, udpSocket))
     while not values[0]:
-
         data = {}
-
         for id in range(len(segments)):
             if id in nacks and len(data)<=values[1]:
                 data[str(id)] = segments[id]
 
         msg = wrap_payload(data)
-        #print(len(msg))
         udpSocket.sendto(msg, addr)
     connection.sendall(str.encode("download complete\n"))
 
 
 def newconnection(connection, id):
+    """
+    this method initiates new client connection,
+    before connection has established the server manages the client's information.
+    every clients has 2 new threads, one for listening and one for sending.
+    :param connection:
+    :param id:
+    :return:
+    """
     data = connection.recv(2048)
     if not data:
         print("not data!")
@@ -121,22 +128,31 @@ def newconnection(connection, id):
         name += str(id)
 
     clients[id] = name
-    print(name, "connected with id ", id)
+    print(name, "connected with id ", id) # print to the cmd that a new client has connected
     pms[name] = []
     msgs.append(name+"["+str(id)+"] connected\n")
     receive_req_from_client(connection, name, id)
 
 
 def get_users(connection):
+    """
+    simple get users method sends the client list of online clients
+    :param connection:
+    :return:
+    """
     msg = "---ONLINE USERS---\n"
     connection.sendall(str.encode(msg))
     for i in clients:
         msg = clients.get(i)+"["+str(i)+"]\n"
         connection.sendall(str.encode(msg))
-    #connection.sendall("\n")
 
 
 def get_files(connection):
+    """
+    simple get files method sends the clients list of available files for download.
+    :param connection:
+    :return:
+    """
     files = [f for f in listdir("files") if isfile(join("files", f))]
     if len(files)==0:
         msg = "---NO FILES AVAILABLE---\n"
@@ -152,6 +168,14 @@ def get_files(connection):
 
 
 def receive_req_from_client(connection, name, id):
+    """
+    Every client has a thread working on this method.
+    It listens to requests from the client.
+    :param connection:
+    :param name:
+    :param id:
+    :return:
+    """
     start_new_thread(send_msg_to_client, (connection, name, id))
     connected = True
     while connected:
@@ -226,6 +250,14 @@ def receive_req_from_client(connection, name, id):
 
 
 def send_msg_to_client(connection, name, id):
+    """
+    Every client has one thread working on this method.
+    It sends messages to the client.
+    :param connection:
+    :param name:
+    :param id:
+    :return:
+    """
     prevmsgs = []
     prevpms = []
     while id in clients.keys():
@@ -242,6 +274,9 @@ def send_msg_to_client(connection, name, id):
                 prevpms = pms.get(name).copy()
 
 
+"""
+Always listen to new connection, once a new client has connected create 2 new threads for it.
+"""
 id = 0
 while True:
     Client, address = serverSocket.accept()

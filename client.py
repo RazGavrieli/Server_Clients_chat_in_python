@@ -1,4 +1,4 @@
-import random
+import random       # for packet loss simulation
 from socket import *
 from tkinter import *
 from functools import partial
@@ -14,6 +14,9 @@ host = []
 
 
 def sethost(host):
+    """
+    set the host ip the client wants to connect to
+    """
     ip = text.get("1.0", "end - 1 chars")
     if ip == "":
         host.append("127.0.0.1")
@@ -25,7 +28,7 @@ def sethost(host):
 text = Text(win, undo=True, height=1, width=40, padx=30, pady=1)
 text.pack(expand=True, fill=BOTH)
 Label(win, text=" enter ip address").pack(pady=20)
-Button(win, text= "connect", command=partial(sethost, host)).pack()
+Button(win, text="connect", command=partial(sethost, host)).pack()
 win.mainloop()
 ##############################################################################################################
 port = 55000
@@ -44,7 +47,13 @@ print("connected")
 
 
 def get_file(port, file):
-
+    """
+    this method is called when the client wants to download a file from the server,
+    using the frUDP protocol.
+    :param port:
+    :param file:
+    :return:
+    """
     udpSocket = socket(AF_INET, SOCK_DGRAM)
     addr = (host[0], int(port))
     progress['value'] = 0
@@ -56,31 +65,31 @@ def get_file(port, file):
         b += 1000
     segments.append("")
     amount_of_segments = len(segments)
-    print("amount ", amount_of_segments)
 
     flag = True
     packet_loss = False
     acks = []
 
+    # begin receiving the file from the server
     while len(acks) <= amount_of_segments - 1:
         data, addr = udpSocket.recvfrom(65535)
         checksum, downloadedData = unwrap_payload(data)
-        if random.randint(0,100)>100:  # delete for final version
-            packet_loss = True       # delete for final version
-        if checksum == 1 or packet_loss:    # delete "or packet loss" for final version
-            packet_loss = False      # delete for final version
-            print(" check sum is 1")
-            if random.randint(0,10)==9: # delete for final version
-                for i in downloadedData.keys():
-                    data = "NACK" + i
-                    udpSocket.sendto(wrap(data, 00), addr)
+        # if random.randint(0,100)>95:               \** packet loss simulation **\
+        #    packet_loss = True                     \** packet loss simulation **\
+        if checksum == 1 or packet_loss:  # "or packet_loss" is for packet loss simulation
+            # packet_loss = False                   \** packet loss simulation **\
+            # if random.randint(0,10)!=9:            \** packet loss simulation **\
+            for i in downloadedData.keys():
+                data = "NACK" + i
+                udpSocket.sendto(wrap(data, 00), addr)
         else:
             for i in downloadedData.keys():
                 if segments[int(i)] == "":
                     acks.append(int(i))
-                    progress['value'] = (len(acks)/amount_of_segments)*100
+                    progress['value'] = (len(acks) / amount_of_segments) * 100
 
                     if len(acks) >= amount_of_segments / 2 and flag:
+                        # stop at 50%
                         flag = False
                         downloadwin = Tk()
                         downloadwin.geometry("200x100")
@@ -104,6 +113,12 @@ def get_file(port, file):
 
 
 def listen(clientSocket, chat):
+    """
+    listens for new messages from the server, process it and show the client
+    the correct output
+    :param clientSocket:
+    :param chat:
+    """
     connected = True
     while connected:
         res = clientSocket.recv(1024)
@@ -114,7 +129,7 @@ def listen(clientSocket, chat):
             print("connect_frudp began")
             res = clientSocket.recv(1024)
             decoded_res = res.decode('utf-8')
-            if decoded_res=="e":
+            if decoded_res == "e":
                 chat.config(state=NORMAL)
                 chat.insert("end", "can not download file, try again later")
                 chat.see("end")
@@ -128,10 +143,17 @@ def listen(clientSocket, chat):
             chat.insert("end", decoded_res)
             chat.see("end")
             chat.config(state=DISABLED)
-            # print(res.decode('utf-8'))
 
 
 def send(clientSocket, msg, text, chat):
+    """
+    Once an input is received (usually from the GUI),
+    process it and send to the server the correct message.
+    :param clientSocket:
+    :param msg:
+    :param text:
+    :param chat:
+    """
     if msg is None:
         msg = text.get("0.0", "end - 1 chars")
 
@@ -160,11 +182,14 @@ def send(clientSocket, msg, text, chat):
     text.delete("1.0", "end")
 
 
+"""
+GUI and input management
+"""
 root = Tk()
 root.geometry("500x300")
 frame = Frame(root)
 frame.pack()
-chat = Text(frame, undo = True, height = 10, width = 60)
+chat = Text(frame, undo=True, height=10, width=60)
 start_new_thread(listen, (clientSocket, chat))
 leftframe = Frame(root)
 leftframe.pack(side=LEFT)
@@ -175,7 +200,7 @@ rightframe.pack(side=RIGHT)
 bottomframe = Frame(root)
 bottomframe.pack(side=BOTTOM)
 
-label = Label(frame, text="chat ver 0.42")
+label = Label(frame, text="chat ver 0.44")
 label.pack()
 
 label = Label(frame, text="message: ")
@@ -191,21 +216,21 @@ chat.insert("1.0", "enter your nickname first\n"
                    "")
 chat.config(state=DISABLED)
 
-progress = Progressbar(frame,orient = HORIZONTAL,length = 100, mode = 'determinate')
+progress = Progressbar(frame, orient=HORIZONTAL, length=100, mode='determinate')
 progress.pack(padx=1, pady=0)
 
-button0 = Button(leftframe, state=DISABLED, text="available files", command=partial(send, clientSocket, "get_files", text, chat))
+button0 = Button(leftframe, state=DISABLED, text="available files",
+                 command=partial(send, clientSocket, "get_files", text, chat))
 button0.pack(padx=3, pady=1)
-button1 = Button(leftframe, state=DISABLED, text="online users", command=partial(send, clientSocket, "get_users", text, chat))
+button1 = Button(leftframe, state=DISABLED, text="online users",
+                 command=partial(send, clientSocket, "get_users", text, chat))
 button1.pack(padx=0, pady=1)
 button2 = Button(frame, text="enter nickname", command=partial(send, clientSocket, "nickname", text, chat))
 button2.pack(padx=3, pady=0)
 button3 = Button(rightframe, state=DISABLED, text="send", command=partial(send, clientSocket, None, text, chat))
 button3.pack(padx=3, pady=1)
 
-
 root.title("chat")
 root.mainloop()
 
 clientSocket.close()
-
