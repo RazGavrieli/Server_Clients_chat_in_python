@@ -4,7 +4,7 @@ This project has been made for Computer Networking Course at Ariel University.<b
 It is a messaging app between serval clients, through a single server. <br>
 The clients can also download files from the server, using a UDP connection with reliabilty layers ontop of it.<br>
 
-### How to run: <<<<<<<<<<<<<<<<<<<<<<<< READ THIS <<<<<<<<<<<<<<<<<<<<<<<<<<<<
+### How to run: <<<<<<<<<<<<<<<<<<<< READ THIS <<<<<<<<<<<<<<<<<<<<<<<<
 #### Server Side - 
 Download server.py and frUDP.py to the same folder on your computer. <br>
 Create a new folder within it, called "files".<br>
@@ -123,4 +123,8 @@ https://docs.google.com/spreadsheets/d/1wk7WyMW9k_cAbM6wEbKLBgx3a4vXbHEUQjmjdHLt
 
 #### Example of 10% packet loss file transfer speeds, with a pause after 50% (initiates slow-start), the wireshark snapshot included is of this transfer
 ![image](https://user-images.githubusercontent.com/90526270/155538668-6ed8bbb0-2029-46c4-bbfe-9c8bbed76856.png)
+
+#### Comparsion between 20% and 30% loss, with average
+![image](https://user-images.githubusercontent.com/90526270/156015217-074aac2a-1523-4c7a-9926-d888ffe5285f.png)
+
 
